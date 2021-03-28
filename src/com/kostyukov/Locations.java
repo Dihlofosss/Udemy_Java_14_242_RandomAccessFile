@@ -6,16 +6,60 @@ import java.util.*;
 public class Locations implements Map<Integer, Location>
 {
 	private static Map<Integer, Location> locations = new LinkedHashMap<>();
+	private static Map<Integer, IndexRecord> index = new LinkedHashMap<>();
 	
 	public static void main(String[] args) throws IOException
 	{
-		try(ObjectOutputStream gameData = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream("res/locations.loc"))))
+		try (RandomAccessFile rao = new RandomAccessFile("res/locations_rnd.dat", "rwd"))
 		{
-			for(Location location : locations.values())
+			
+			rao.writeInt(locations.size());
+			int indexSize = locations.size() * 3 * Integer.BYTES;
+			int locationStart = (int) (indexSize + rao.getFilePointer() + Integer.BYTES);
+			rao.writeInt(locationStart);
+			
+			long indexStart = rao.getFilePointer();
+			
+			int startPointer = locationStart;
+			rao.seek(startPointer);
+			
+			for (Location location : locations.values())
 			{
-				gameData.writeObject(location);
+				rao.writeInt(location.getLocationID());
+				rao.writeUTF(location.getDescription());
+				StringBuilder string = new StringBuilder();
+				for (String direction : location.getExits().keySet())
+				{
+					if (direction.equalsIgnoreCase("Q"))
+					{
+						continue;
+					}
+					string.append(direction);
+					string.append(",");
+					string.append(location.getExits().get(direction));
+					string.append(",");
+				}
+				rao.writeUTF(string.toString());
+				
+				IndexRecord indexRecord = new IndexRecord(startPointer, (int) rao.getFilePointer() - startPointer);
+				index.put(location.getLocationID(), indexRecord);
+				
+				startPointer = (int) rao.getFilePointer();
+			}
+			
+			rao.seek(indexStart);
+			for (Integer locationID : index.keySet())
+			{
+				rao.writeInt(locationID);
+				rao.writeInt(index.get(locationID).getLength());
+				rao.writeInt(index.get(locationID).getLength());
 			}
 		}
+		
+		// 1. This first four bytes will contain the number of locations (bytes 0-3)
+		// 2. The next four bytes will contain the start offset of the locations section (bytes 4-7)
+		// 3. The next section of the file will contain the index (the index is 1692 bytes long.  It will start at byte 8 and end at byte 1699
+		// 4. The final section of the file will contain the location records (the data). It will start at byte 1700
 	}
 	
 	static
