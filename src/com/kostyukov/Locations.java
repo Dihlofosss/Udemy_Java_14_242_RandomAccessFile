@@ -8,6 +8,8 @@ public class Locations implements Map<Integer, Location>
 	private static Map<Integer, Location> locations = new LinkedHashMap<>();
 	private static Map<Integer, IndexRecord> index = new LinkedHashMap<>();
 	
+	private static RandomAccessFile ra;
+	
 	public static void main(String[] args) throws IOException
 	{
 		try (RandomAccessFile rao = new RandomAccessFile("res/locations_rnd.dat", "rwd"))
@@ -51,7 +53,7 @@ public class Locations implements Map<Integer, Location>
 			for (Integer locationID : index.keySet())
 			{
 				rao.writeInt(locationID);
-				rao.writeInt(index.get(locationID).getLength());
+				rao.writeInt(index.get(locationID).getStartByte());
 				rao.writeInt(index.get(locationID).getLength());
 			}
 		}
@@ -64,23 +66,62 @@ public class Locations implements Map<Integer, Location>
 	
 	static
 	{
-		try (ObjectInputStream inputStream = new ObjectInputStream(new BufferedInputStream(new FileInputStream("res/locations.loc"))))
+		try
 		{
-			while (true)
+			ra = new RandomAccessFile("res/locations_rnd.dat", "rwd");
+			int numLocations = ra.readInt();
+			long locationStartPointer = ra.readInt();
+
+			while (ra.getFilePointer() < locationStartPointer)
 			{
-				Location location = (Location) inputStream.readObject();
-				System.out.println("Found location: " + location.getDescription());
-				locations.put(location.getLocationID(), location);
+				int locationID = ra.readInt();
+				int locationStart = ra.readInt();
+				int locationLength = ra.readInt();
+
+				IndexRecord record = new IndexRecord(locationStart, locationLength);
+				index.put(locationID,record);
 			}
 		}
-		catch (ClassNotFoundException | EOFException e)
-		{
-			e.printStackTrace();
-		}
+	
+//		try (ObjectInputStream inputStream = new ObjectInputStream(new BufferedInputStream(new FileInputStream("res/locations.loc"))))
+//		{
+//			while (true)
+//			{
+//				Location location = (Location) inputStream.readObject();
+//				System.out.println("Found location: " + location.getDescription());
+//				locations.put(location.getLocationID(), location);
+//			}
+//		}
+//		catch (ClassNotFoundException | EOFException e)
+//		{
+//			e.printStackTrace();
+//		}
 		catch (IOException e)
 		{
 			e.printStackTrace();
 		}
+	}
+	
+	public Location getLocation(int locationID) throws IOException
+	{
+		IndexRecord record = index.get(locationID);
+		ra.seek(record.getStartByte());
+		int id = ra.readInt();
+		String description = ra.readUTF();
+		String exits = ra.readUTF();
+		String[] exitPart = exits.split(",");
+		Location location = new Location(locationID, description);
+		
+		if (locationID != 0)
+		{
+			for (short i = 0; i < exitPart.length; i++)
+			{
+				String direction = exitPart[i];
+				int destination = Integer.parseInt(exitPart[++i]);
+				location.addExit(direction, destination);
+			}
+		}
+		return location;
 	}
 	
 	@Override
@@ -153,5 +194,10 @@ public class Locations implements Map<Integer, Location>
 	public Set<Entry<Integer, Location>> entrySet()
 	{
 		return locations.entrySet();
+	}
+	
+	public void close() throws IOException
+	{
+		ra.close();
 	}
 }
